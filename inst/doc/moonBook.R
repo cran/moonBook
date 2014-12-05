@@ -1,6 +1,6 @@
 ## ----,fig.height=5,fig.width=6-------------------------------------------
 library(moonBook)
-densityplot(Height~sex,data=acs)
+densityplot(age~sex,data=acs)
 densityplot(age~Dx,data=acs)
 
 ## ----,fig.width=6,fig.height=6-------------------------------------------
@@ -49,9 +49,17 @@ mytable(am~carb,data=mtcars,max.ylev=6)
 mytable(sex+DM~.,data=acs)
 
 
-## ----,results='asis',warning=FALSE---------------------------------------
+## ----,results='asis'-----------------------------------------------------
 out=mytable(Dx~.,data=acs)
-mylatex(out)
+myhtml(out)
 out1=mytable(sex+DM~.,data=acs)
+myhtml(out1)
+
+## ----,results='asis',warning=FALSE---------------------------------------
+mylatex(out)
 mylatex(out1)
+
+## ----,eval=FALSE---------------------------------------------------------
+#  mycsv(out,file="test.csv")
+#  mycsv(out1,fil="test1.csv")
 
