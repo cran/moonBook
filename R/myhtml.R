@@ -1,23 +1,31 @@
-#' Export to html file for class "mytable" or "cbind.mytable"
+#' Export to html file for class "mytable" or "cbind.mytable" of "data.frame"
 #'
 #' @param x An object of class "mytable" or "cbind.mytable"
 #' @param caption A character
+#' @param rownames A logical value wheher or not include rownames in table
 #' @examples
 #' require(moonBook)
 #' res=mytable(sex~age+Dx,data=acs)
 #' myhtml(res)
-myhtml=function(x,caption=NULL) UseMethod("myhtml")
+#' res1=mytable(sex+Dx~.,data=acs)
+#' myhtml(res1)
+#' x=head(iris)
+#' myhtml(x)
+#' myhtml(x,caption="Table 1. myhtml Test")
+#' myhtml(x,caption="Table 1. myhtml Test",rownames=FALSE)
+myhtml=function(x,caption=NULL,rownames=TRUE) UseMethod("myhtml")
 
 
-#' Export to html file for class "mytable" or "cbind.mytable"
+#' @describeIn myhtml
 #'
-#' @param x An object of class "mytable" or "cbind.mytable"
-#' @param caption A character
-#' @examples
-#' require(moonBook)
-#' res=mytable(sex~age+Dx,data=acs)
-#' myhtml(res)
-myhtml.mytable=function(x,caption=NULL){
+myhtml.default=function(x,caption=NULL,rownames=TRUE){
+    cat("myhtml function only applicable to data.frame, mytable or cbind.mytable\n")
+}
+
+
+#' @describeIn myhtml
+#'
+myhtml.mytable=function(x,caption=NULL,rownames=TRUE){
     out=mytable2html(x)
     if(is.null(caption))
         caption=paste("Descriptive Statistics by '",colnames(out)[1],"'",sep="")
@@ -32,23 +40,21 @@ myhtml.mytable=function(x,caption=NULL){
     cat("</tr>\n")
     for(j in 1:nrow(out)){
         cat("<tr>")
-        cat(paste("<td>",out[j,1],"</td>",sep=""))
-        for(i in 2:ncol(out)) cat(paste("<td>",out[j,i],"</td>",sep=""))
+        temp=gsub(" -","&nbsp;&nbsp;&nbsp;",out[j,1],fixed=TRUE)
+        cat(paste("<td>",temp,"</td>",sep=""))
+        for(i in 2:ncol(out)) {
+            temp=gsub(" -","&nbsp;&nbsp;&nbsp;",out[j,i],fixed=TRUE)
+            cat(paste("<td>",temp,"</td>",sep=""))
+        }
         cat("</tr>\n")
     }
     cat("</table>\n")
 }
 
 
-#' Export to html file for class "mytable" or "cbind.mytable"
+#' @describeIn myhtml
 #'
-#' @param x An object of class "mytable" or "cbind.mytable"
-#' @param caption A character
-#' @examples
-#' require(moonBook)
-#' res=mytable(sex~age+Dx,data=acs)
-#' myhtml(res)
-myhtml.cbind.mytable=function(x,caption=NULL){
+myhtml.cbind.mytable=function(x,caption=NULL,rownames=TRUE){
     myobj=x
     tcount=length(myobj) # number of tables
     tnames=unlist(attr(myobj,"caption"))
@@ -70,8 +76,8 @@ myhtml.cbind.mytable=function(x,caption=NULL){
         for(i in 2:length(group)) caption=paste(caption," and ",group[i],sep="")
     }
     myhtmlHead()
-    cat("<table cellpadding=5 cellspacing=5>")
-    cat(paste("<caption>",caption,"</caption>",sep=""))
+    cat("<table cellpadding=5 cellspacing=5>\n")
+    cat(paste("<caption>",caption,"</caption>\n",sep=""))
     cat("<tr>\n")
     cat(paste("<th>",group[1],"</th>",sep=""))
     for(i in 1:tcount) {
@@ -85,7 +91,10 @@ myhtml.cbind.mytable=function(x,caption=NULL){
     cat("</tr>\n")
     for(j in 1:nrow(result)){
         cat("<tr>")
-        for(i in 1:ncol(result)) cat(paste("<td>",result[j,i],"</td>",sep=""))
+        for(i in 1:ncol(result)) {
+            temp=gsub(" -","&nbsp;&nbsp;&nbsp;",result[j,i],fixed=TRUE)
+            cat(paste("<td>",temp,"</td>",sep=""))
+        }
         cat("</tr>\n")
     }
     cat("</table>\n")
@@ -125,6 +134,6 @@ myhtmlHead=function(){
         table, th, td {
         border: 1px solid #bcbcbc;
     } </style>")
-    cat("</head>")
+    cat("</head>\n")
 }
 

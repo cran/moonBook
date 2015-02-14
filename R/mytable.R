@@ -26,7 +26,7 @@ my.t.test=function(y,x){
     else{
         out3=lm(x~y)
         if(sum(result)<=5000) out4=shapiro.test(resid(out3))
-        else out4=nortest::ad.test(resid(out))
+        else out4=nortest::ad.test(resid(out3))
         out5=kruskal.test(as.numeric(x),factor(y))
         p=c(out4$p.value,anova(out3)$Pr[1],out5$p.value)
     }
@@ -51,7 +51,7 @@ my.chisq.test=function(x,y,mydata)
         ow=options("warn")
         options(warn=-1)
         out=chisq.test(mytable)
-        if(sum(mytable)< 500 & dim(mytable)[1]>1){
+        if(sum(mytable)< 100 & dim(mytable)[1]>1){
             out1=fisher.test(mytable)
             p=c(out$p.value,out1$p.value,NA)
         }
@@ -303,7 +303,8 @@ printmytable2=function(obj,digits=1){
 
             p1=c(p1,obj[[i]]$p[1])
             p2=c(p2,obj[[i]]$p[2])
-            p3=c(p3,NA)
+            p3=c(p3,length(obj[[i]]$subgroup))
+            #p3=c(p3,NA)
             p4=c(p4,obj[[i]]$p[1])
             ptest=c(ptest,"chisq.test")
             for(k in 1:length(obj[[i]]$subgroup)){
@@ -336,10 +337,10 @@ printmytable2=function(obj,digits=1){
         res=data.frame(res,desc[,j])
         #colnames(res)[length(res)]=obj$names[j]
     }
-    sp1=sapply(p1,function(x) ifelse(is.na(x),"     ",sprintf("%.3f",x)))
-    sp2=sapply(p2,function(x) ifelse(is.na(x),"     ",sprintf("%.3f",x)))
-    sp3=sapply(p3,function(x) ifelse(is.na(x),"     ",sprintf("%.3f",x)))
-    sp4=sapply(p4,function(x) ifelse(is.na(x),"     ",sprintf("%.3f",x)))
+    sp1=sapply(p1,function(x) ifelse(is.na(x),"",sprintf("%.3f",x)))
+    sp2=sapply(p2,function(x) ifelse(is.na(x),"",sprintf("%.3f",x)))
+    sp3=sapply(p3,function(x) ifelse(is.na(x),"",sprintf("%.3f",x)))
+    sp4=sapply(p4,function(x) ifelse(is.na(x),"",sprintf("%.3f",x)))
     sig=sapply(p4,p2sig)
     res=data.frame(res,p=sp4,sig,p1=sp1,p2=sp2,p3=sp3,class=unlist(cl),ptest=ptest,N=unlist(N))
     #rownames(res)=names(obj)[4:length(obj)]
