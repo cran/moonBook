@@ -4,6 +4,7 @@
 #' These are not to be called by the user
 #' @param y a vector
 #' @param x a numeric vector
+#' @importFrom stats lm shapiro.test resid var.test t.test kruskal.test anova wilcox.test
 my.t.test=function(y,x){
 
     result=table(y,x)
@@ -17,11 +18,18 @@ my.t.test=function(y,x){
         out=lm(x~y)
         if(sum(result)<=5000) out3=shapiro.test(resid(out))
         else out3=nortest::ad.test(resid(out))
-        out1=var.test(x~y)
-        if(out1$p.value<0.05) out4=t.test(x~y,na.rm=T)
-        else out4=t.test(x~y,var.equal=TRUE)
-        out5=kruskal.test(as.numeric(x),factor(y))
-        p=c(out3$p.value,out4$p.value,out5$p.value)
+        out1=try(var.test(x~y))
+        if(class(out1)!="htest") p=c(NA,NA,NA)
+        else{
+            if(out1$p.value<0.05) out4=t.test(x~y,na.rm=T)
+            else out4=t.test(x~y,var.equal=TRUE)
+            #out5=wilcox.test(x~y,exact=FALSE)
+            options(warn=-1)
+            out5<-wilcox.test(x~y)
+            options(warn=0)
+            p=c(out3$p.value,out4$p.value,out5$p.value)
+        }
+
     }
     else{
         out3=lm(x~y)
@@ -40,18 +48,21 @@ my.t.test=function(y,x){
 #' @param x a vector
 #' @param y a vector
 #' @param mydata a data.frame
+#' @importFrom stats chisq.test fisher.test xtabs
 my.chisq.test=function(x,y,mydata)
 {
 
     mytable=xtabs(~x+y,data=mydata)
     if(dim(mytable)[2]==1){
         p=c(NA,NA,NA)
-    }
-    else{
+    } else if(dim(mytable)[1]==1){
+        p=c(NA,NA,NA)
+    } else{
         ow=options("warn")
         options(warn=-1)
-        out=chisq.test(mytable)
-        if(sum(mytable)< 100 & dim(mytable)[1]>1){
+        out<-try(chisq.test(mytable))
+        if(class(out)!="htest") p=c(NA,NA,NA)
+        else if(sum(mytable)< 100 & dim(mytable)[1]>1){
             out1=fisher.test(mytable)
             p=c(out$p.value,out1$p.value,NA)
         }
@@ -66,9 +77,16 @@ my.chisq.test=function(x,y,mydata)
 #' Internal mytable functions
 #' These are not to be called by the user
 #' @param x a numeric vector
+#' @importFrom stats sd median mad IQR fivenum
 num_summary <-function(x){
-    funs=c(mean,sd,median,mad,IQR,fivenum)
-    lapply(funs,function(f) f(x,na.rm=TRUE))
+    if(all(is.na(x))){
+       result=list(NA,NA,NA,NA,NA,list(NA,NA,NA,NA,NA))
+    } else{
+      funs=c(mean,sd,median,mad,IQR,fivenum)
+      result=lapply(funs,function(f) f(x,na.rm=TRUE))
+    }
+    result
+
 }
 
 #' Produce table for descriptive statistics
@@ -86,22 +104,28 @@ num_summary <-function(x){
 #'                 variable ('y'). If a colummn have unique values less than max.ylev
 #'                 it is treated as a categorical variable. Default value is 5.
 #' @param digits An integer indicating the number of decimal places (round) or
-#'               significant digits (signif) to be used. Default value is 1.
+#'               significant digits to be used. Default value is 1.
 #' @param method An integer indicating methods for continuous variables.
 #'               Possible values in methods are
 #'               \describe{
 #'                  \item{1}{forces analysis as normal-distributed}
 #'                  \item{2}{forces analysis as continuous non-normal}
-#'                  \item{3}{performs a Shapiro-Wilks test to decide between
+#'                  \item{3}{performs a Shapiro-Wilk test to decide between
 #'                          normal or non-normal}
 #'               }
 #'               Default value is 1.
 #' @param show.all A logical value indicating whether or not all statistical
 #'                 values have to be shown in table. Default value is FALSE.
+#' @param exact A logical value indicating whether or not permit call with approximate
+#'             parameter. If true, only exact column name permitted.Default value is FALSE.
+#' @param show.total A logical value indicating whether or not show total group value.
+#'                 Default value is FALSE.
 #' @return An object of class "mytable".
 #'      'print' returns a table for descriptive statistics.
 #'      'summary' returns a table with all statistical values.
 #'
+#' @importFrom stats addmargins
+#' @export
 #' @examples
 #' data(acs)
 #' mytable(Dx~.,data=acs)
@@ -112,7 +136,7 @@ num_summary <-function(x){
 #' summary(out)
 #' mylatex(out)
 #'
-mytable=function(formula,data,max.ylev=5,digits=1,method=1,show.all=FALSE){
+mytable=function(formula,data,max.ylev=5,digits=1,method=1,show.all=FALSE,exact=FALSE,show.total=FALSE){
     call=paste(deparse(formula),", ","data= ",substitute(data),sep="")
     # cat("\n Call:",call,"\n\n")
     f=formula
@@ -122,40 +146,56 @@ mytable=function(formula,data,max.ylev=5,digits=1,method=1,show.all=FALSE){
 
     y=unlist(strsplit(y,"+",fixed=TRUE))
     if(length(y)>1) {
-        result=mytable2(formula,data,max.ylev,digits,method,show.all)
+        result=mytable2(formula,data,max.ylev,digits,method,show.all,exact=exact,show.total=show.total)
         return(result)
     }
-    y1=validColname(y,colnames(data))
-    if(is.na(y1)) {
-        cat("\n","There is no column named '",y,"' in data ",substitute(data),"\n")
-        return(invisible())
-    }
-    if(!identical(y,y1)) {
-        cat("\n","'",y,"' is an invalid column name: Instead '",y1,"' is used\n")
-        s=paste(y1,res[2],sep="~")
-        result=mytable(as.formula(s),data,max.ylev,digits,method,show.all)
-        return(result)
+    if(exact){
+        y1<-y
+    } else{
+        y1=validColname(y,colnames(data))
+        if(is.na(y1)) {
+            cat("\n","There is no column named '",y,"' in data ",substitute(data),"\n")
+            return(invisible())
+        }
+        if(!identical(y,y1)) {
+            cat("\n","'",y,"' is an invalid column name: Instead '",y1,"' is used\n")
+            s=paste(y1,res[2],sep="~")
+            result=mytable(as.formula(s),data,max.ylev,digits,method,show.all,exact=exact,show.total=show.total)
+            return(result)
+        }
     }
     t=table(data[[y1]])
+    if(show.total){
+        t=addmargins(t)
+        names(t)[length(t)]="Total"
+    }
     result=list(y=y1,length=length(t),names=names(t),count=unname(t),method=method,show.all=show.all)
     x=labels(myt)
+    error=c()
     for(i in 1:length(x)) {
-        out=mytable.sub(y1,x[i],data,max.ylev)
+
+        out<-mytable.sub(y1,x[i],data,max.ylev,show.total=show.total)
+        if(length(out)!=4) {
+            error=c(error,x[i])
+            next
+        }
         result[[x[i]]]=out
     }
     out=printmytable2(result,digits)
     class(out)=c("mytable")
+    attr(out,"error")=error
     out
 }
 
 
-#' Find valid string among character vecter from approximate string
+#' Find valid string among character vector from approximate string
 #'
 #' @param pattern character string to be matched in the given character
-#' @param x a character vecter where matches are sought
+#' @param x a character vector where matches are sought
 #'
 #' @return returns NA in case of no matched string found
-#'         or a character string in string vecter x
+#'         or a character string in string vector x
+#' @export
 #' @examples
 #' a="dx"
 #' b=c("Age","Sex","Dx")
@@ -177,9 +217,18 @@ validColname=function(pattern,x) {
 #' @param data a data.frame
 #' @param max.ylev an integer
 #' @param method an integer
-mytable.sub=function(y,x,data,max.ylev,method){
-    mydata=na.omit(data.frame(y=data[[y]],x=data[[x]]))
+#' @param show.total a logical value
+#' @importFrom stats na.omit
+#' @export
+mytable.sub=function(y,x,data,max.ylev=5,method=1,show.total=FALSE){
+    #mydata=na.omit(data.frame(y=data[[y]],x=data[[x]]))
+
+    mydata=try(data.frame(y=data[[y]],x=data[[x]]))
+
+    if(class(mydata)!="data.frame") return(-1)
     result=table(mydata$x,mydata$y)
+
+    result1=addmargins(result,2)
     N=sum(result)
     var_name=x
     xlev=dim(result)[1]
@@ -193,13 +242,28 @@ mytable.sub=function(y,x,data,max.ylev,method){
         subgroup=list()
         ## for descriptives
         for(i in 1:xlev){
-            count=result[i,]
-            attr(count,"names")=NULL
-            ratio=apply(result,2,function(x) x*100/sum(x))
-            #browser()
-            if(!is.null(dim(ratio))) a=list(count=count,ratio=ratio[i,])
-            else a=list(count=count,ratio=ratio)
-            subgroup[[i]]=a
+            if(show.total){
+
+                count=result1[i,]
+                attr(count,"names")=NULL
+                ratio=apply(result1,2,function(x) x*100/sum(x))
+                #result2=cbind(result1[,ncol(result1)],result1[,-ncol(result1)])
+                #count=result2[i,]
+                #attr(count,"names")=NULL
+                #ratio=apply(result2,2,function(x) x*100/sum(x))
+                if(!is.null(dim(ratio))) a=list(count=count,ratio=ratio[i,])
+                else a=list(count=count,ratio=ratio)
+                subgroup[[i]]=a
+
+            }else{
+                count=result[i,]
+                attr(count,"names")=NULL
+                ratio=apply(result,2,function(x) x*100/sum(x))
+                #browser()
+                if(!is.null(dim(ratio))) a=list(count=count,ratio=ratio[i,])
+                else a=list(count=count,ratio=ratio)
+                subgroup[[i]]=a
+            }
 
         }
         #if(xlev==1) {
@@ -216,9 +280,29 @@ mytable.sub=function(y,x,data,max.ylev,method){
         #browser()
     }
     else {
-        # for descriptive
-        out=tapply(mydata$x,mydata$y,num_summary)
+         ## for descriptive
+         out=tapply(data[[x]],data[[y]],num_summary)
+
+         if(show.total){
+            out[[length(out)+1]]=num_summary(data[[x]])
+            names(out)[length(out)]="Total"
+        }
+        if(FALSE){
+        out=list()
+        if(show.total){
+            out=num_summary(data[[x]])
+            names(out)[length(out)]="Total"
+            out1=tapply(data[[x]],data[[y]],num_summary)
+            for(i in 1:length(out1)){
+                out[[i+1]]=out1[[i]]
+            }
+        }
+        else{
+            out=tapply(data[[x]],data[[y]],num_summary)
+        }
+        }
         # for statistics
+        mydata=na.omit(data.frame(y=data[[y]],x=data[[x]]))
         p=my.t.test(mydata$y,mydata$x)
         result=list(class=var_class,count=N,out=out,p=p)
 
@@ -232,6 +316,7 @@ mytable.sub=function(y,x,data,max.ylev,method){
 #' These are not to be called by the user
 #' @param obj an object
 #' @param digits an integer
+#' @export
 printmytable2=function(obj,digits=1){
     plusminus="\u00b1"
     cl=c()
@@ -241,6 +326,7 @@ printmytable2=function(obj,digits=1){
     p1=p2=p3=p4=c()
     ptest=c()
     desc=matrix(,ncol=obj$length)
+
     colnames(desc)=obj$names
 
     fmt=sprintf("%s%df","%4.",digits)
@@ -254,9 +340,11 @@ printmytable2=function(obj,digits=1){
         # if numeric
         if(obj[[i]]$class=="continuous"){
             for(j in 1:obj$length){
-                temp1=paste(sprintf(fmt,obj[[i]]$out[[j]][[1]]),plusminus,
+                if(is.na(obj[[i]]$out[[j]][[1]])) temp1="    -"
+                else temp1=paste(sprintf(fmt,obj[[i]]$out[[j]][[1]]),plusminus,
                             sprintf(fmt,obj[[i]]$out[[j]][[2]]),sep=" ")
-                temp2=paste(sprintf(fmt,obj[[i]]$out[[j]][[6]][3])," [",
+                if(is.na(obj[[i]]$out[[j]][[6]][3])) temp2="    -"
+                else temp2=paste(sprintf(fmt,obj[[i]]$out[[j]][[6]][3])," [",
                             sprintf(fmt,obj[[i]]$out[[j]][[6]][2]),";",
                             sprintf(fmt,obj[[i]]$out[[j]][[6]][4]),"]",sep="")
                 if(obj$method==1) temp=temp1
@@ -320,7 +408,9 @@ printmytable2=function(obj,digits=1){
                 ptest=c(ptest,"")
                 add=matrix(,ncol=obj$length)
                 for(j in 1:obj$length){
-                    temp=paste(obj[[i]]$subgroup[[k]]$count[j]," (",
+                    if(is.na(obj[[i]]$subgroup[[k]]$count[j])) temp="   -"
+                    else if(obj[[i]]$subgroup[[k]]$count[j]==0) temp=" 0 ( 0.0%)"
+                    else temp=paste(obj[[i]]$subgroup[[k]]$count[j]," (",
                                sprintf(fmt,obj[[i]]$subgroup[[k]]$ratio[j]),"%)",sep="")
                     add[1,j]=temp
                 }
@@ -370,7 +460,7 @@ p2sig=function(value){
 #' These are not to be called by the user
 #' @param x a character vector
 #' @param ...  further arguments passed to or from other methods.
-#' @param width an interger
+#' @param width an integer
 centerprint=function(x,...,width=10){
 
         mwidth=max(nchar(x),width)
@@ -398,7 +488,7 @@ space=function(num){
 #'
 #' Internal mytable functions
 #' These are not to be called by the user
-#' @param x a chearacter vector
+#' @param x a character vector
 #' @param times an integer
 reprint=function(x,times){
     ret=x
@@ -436,6 +526,7 @@ obj2linecount=function(myobj){
 #' @param x An object of class "mytable", a result of a call to \code{\link{mytable}}
 #' @param ... further arguments passed to or from other methods.
 #'
+#' @export
 print.mytable=function(x,...) {
 
     myobj=x
@@ -475,9 +566,10 @@ print.mytable=function(x,...) {
 #' cbind function for class "mytable"
 #'
 #' @param ...      Objects of class "mytable", a result of a call to \code{\link{mytable}}
-#' @param caption  Unique values of grouping vaiabled used for column name of table
+#' @param caption  Unique values of grouping variables used for column name of table
 #' @param y        Names of grouping variables used for caption of table
 #'
+#' @export
 cbind.mytable=function (..., caption,y=NULL)
 {
     cl <- match.call()
@@ -528,6 +620,7 @@ cbind.mytable=function (..., caption,y=NULL)
 #' @param x   an object of class "cbind.mytable", a result of a call to \code{\link{cbind.mytable}}
 #' @param ...  further arguments passed to or from other methods.
 #'
+#' @export
 print.cbind.mytable=function(x,...) {
     myobj=x
     tcount=length(myobj) # number of tables
@@ -604,9 +697,11 @@ print.cbind.mytable=function(x,...) {
 #' @param object An object of class "mytable", a result of a call \code{\link{mytable}}
 #' @param ... further arguments passed to or from other methods.
 #'
+#' @export
 #' @examples
 #' out=mytable(am~.,data=mtcars)
 #' summary(out)
+#'
 summary.mytable=function(object,...) {
     object$show.all=TRUE
     object
@@ -616,6 +711,7 @@ summary.mytable=function(object,...) {
 #'
 #' @param object An object of class "cbind.mytable", a result of a call \code{\link{mytable}}
 #' @param ... further arguments passed to or from other methods.
+#' @export
 #' @examples
 #' out=mytable(am+cyl~.,data=mtcars)
 #' summary(out)
@@ -627,7 +723,7 @@ summary.cbind.mytable=function(object,...) {
     object
 }
 
-#' Produce combind table for descriptive statistics
+#' Produce combined table for descriptive statistics
 #'
 #' Produce table for descriptive statistics by two grouping variables for several variables easily.
 #' Depending on  the nature of these variables, different descriptive statistical
@@ -641,20 +737,25 @@ summary.cbind.mytable=function(object,...) {
 #'                 variable ('y'). If a colummn have unique values less than max.ylev
 #'                 it is treated as a categorical variable. Default value is 5.
 #' @param digits An integer indicating the number of decimal places (round) or
-#'               significant digits (signif) to be used. Default value is 1.
+#'               significant digits to be used. Default value is 1.
 #' @param method An integer indicating methods for continuous variables.
 #'               Possible values in methods are
 #'               \describe{
 #'                  \item{1}{forces analysis as normal-distributed}
 #'                  \item{2}{forces analysis as continuous non-normal}
-#'                  \item{3}{performs a Shapiro-Wilks test to decide between
+#'                  \item{3}{performs a Shapiro-Wilk test to decide between
 #'                          normal or non-normal}
 #'               }
 #'               Default value is 1.
 #' @param show.all A logical value indicating whether or not all statistical
 #'                 values have to be shown in table. Default value is FALSE.
+#' @param exact A logical value indicating whether or not permit call with approximate
+#'             parameter. If true, only exact column name permitted.Default value is FALSE.
+#' @param show.total A logical value indicating whether or not show total group value.
+#'                 Default value is FALSE.
+#' @export
 #' @return An object of class "cbind.mytable"
-mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE){
+mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE,exact=FALSE,show.total=FALSE){
     call=paste(deparse(formula),", ","data= ",substitute(data),sep="")
     # cat("\n Call:",call,"\n\n")
     f=formula
@@ -670,38 +771,67 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE){
         cat("Only two variables are permitted as grouping variables\n")
         return(invisible())
     }
-    validy1=validColname(y[1],colnames(data))
-    validy2=validColname(y[2],colnames(data))
-    if(is.na(validy1)) {
-        cat("\n","There is no column named '",y[1],"' in data ","\n")
-        return(invisible())
-    }
-    if(!identical(y[1],validy1)) {
-        cat("\n","'",y[1],
-            "' is an invalid column name: Instead '",validy1,"' is used\n")
-        recall=1
-    }
-    if(is.na(validy2)) {
-        cat("\n","There is no column named '",y[2],"' in data ","\n")
-        return(invisible())
-    }
-    if(!identical(y[2],validy2)) {
-        cat("\n","'",y[2],
-            "' is an invalid column name: Instead '",validy2,"' is used\n")
-        recall=1
-    }
-    if(recall==1) {
-        s=paste(validy1,validy2,sep="+")
-        s=paste(s,res[2],sep="~")
-        result=mytable2(as.formula(s),data,max.ylev,digits,method,show.all)
-        return(result)
+    if(exact) {
+        validy1=y[1]
+        validy2=y[2]
+    } else{
+        validy1=validColname(y[1],colnames(data))
+        validy2=validColname(y[2],colnames(data))
+        if(is.na(validy1)) {
+            cat("\n","There is no column named '",y[1],"' in data ","\n")
+            return(invisible())
+        }
+        if(!identical(y[1],validy1)) {
+            cat("\n","'",y[1],
+                "' is an invalid column name: Instead '",validy1,"' is used\n")
+            recall=1
+        }
+        if(is.na(validy2)) {
+            cat("\n","There is no column named '",y[2],"' in data ","\n")
+            return(invisible())
+        }
+        if(!identical(y[2],validy2)) {
+            cat("\n","'",y[2],
+                "' is an invalid column name: Instead '",validy2,"' is used\n")
+            recall=1
+        }
+        if(recall==1) {
+            s=paste(validy1,validy2,sep="+")
+            s=paste(s,res[2],sep="~")
+            result=mytable2(as.formula(s),data,max.ylev,digits,method,show.all,exact,show.total)
+            return(result)
+        }
     }
     uniquey=unique(data[[validy1]])
     ycount=length(uniquey)
     out1=list()
     for(i in 1:ycount){
         mydata=data[data[[validy1]]==uniquey[i],]
+
+        if(FALSE){  #mytable
+            t=table(data[[y1]])
+            if(show.total){
+                t=addmargins(t)
+                names(t)[length(t)]="Total"
+            }
+            result=list(y=y1,length=length(t),names=names(t),count=unname(t),
+                        method=method,show.all=show.all)
+            x=labels(myt)
+            for(i in 1:length(x)) {
+                out=mytable.sub(y1,x[i],data,max.ylev,show.total=show.total)
+                result[[x[i]]]=out
+            }
+            out=printmytable2(result,digits)
+            class(out)=c("mytable")
+            out
+
+        }
+
         t=table(mydata[[validy2]])
+        if(show.total){
+            t=addmargins(t)
+            names(t)[length(t)]="Total"
+        }
         result=list(y=validy2,length=length(t),names=names(t),count=unname(t),
                     method=method,show.all=show.all)
         x=labels(myt)
@@ -712,7 +842,7 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE){
                 data[[x[j]]]=factor(data[[x[j]]])
                 mydata=data[data[[validy1]]==uniquey[i],]
             }
-            out=mytable.sub(validy2,x[j],mydata,max.ylev)
+            out=mytable.sub(validy2,x[j],mydata,max.ylev,show.total=show.total)
             result[[x[j]]]=out
             #cat("y[2]=",y[2],",x[j]=",x[j],"\n")
         }
@@ -736,11 +866,12 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE){
 #' rank a numeric vector and returns a new ordinal vector
 #'
 #' @param y a numeric vector
-#' @param k a integer specifies how many groups you want to classifiy.
+#' @param k a integer specifies how many groups you want to classify.
 #'            default value is 4
 #'
 #' @return a ordinal vector(numeric) with the same length of y
 #'
+#' @export
 #' @examples
 #'
 #' require(ggplot2)
@@ -757,7 +888,9 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE){
 #' table(diamonds$PriceGroup5)
 #' aggregate(price~PriceGroup5,data=diamonds,range)
 rank2group <- function (y,k=4){
-    count=length(y)
-    z=rank(y,ties.method="min")
-    return(floor((z-1)/(count/k))+1)
+    x=y[!is.na(y)]
+    count = length(x)
+    z = rank(x, ties.method = "min")
+    y[!is.na(y)]=(floor((z - 1)/(count/k)) + 1)
+    y
 }
