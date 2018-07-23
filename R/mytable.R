@@ -5,33 +5,45 @@
 #' @param y a vector
 #' @param x a numeric vector
 #' @importFrom stats lm shapiro.test resid var.test t.test kruskal.test anova wilcox.test
+#' @export
 my.t.test=function(y,x){
 
     result=table(y,x)
-    xlev=dim(result)[1]
-    ylev=dim(result)[1]
+    dim(result)
+
+    (xlev=dim(result)[1])
+    (ylev=dim(result)[1])
     if(ylev==1) {
         p=c(NA,NA,NA)
-    }
-    else if(xlev==2) {
+    } else if(xlev==2) {
         #browser()
         out=lm(x~y)
-        if(sum(result)<=5000) out3=shapiro.test(resid(out))
-        else out3=nortest::ad.test(resid(out))
+        if(sum(result)<=5000) {
+            out3=shapiro.test(resid(out))
+        } else {
+            out3=nortest::ad.test(resid(out))
+        }
         out1=try(var.test(x~y))
-        if(class(out1)!="htest") p=c(NA,NA,NA)
-        else{
-            if(out1$p.value<0.05) out4=t.test(x~y,na.rm=T)
-            else out4=t.test(x~y,var.equal=TRUE)
-            #out5=wilcox.test(x~y,exact=FALSE)
+
+        if(class(out1)!="htest") {
+            p=c(NA,NA,NA)
+        } else{
             options(warn=-1)
             out5<-wilcox.test(x~y)
             options(warn=0)
-            p=c(out3$p.value,out4$p.value,out5$p.value)
+            if(is.nan(out1$p.value)) {
+                p=c(NA,NA,out5$p.value)
+            } else if(out1$p.value<0.05) {
+                out4=t.test(x~y,na.rm=T)
+                p=c(out3$p.value,out4$p.value,out5$p.value)
+            } else {
+                out4=t.test(x~y,var.equal=TRUE)
+                p=c(out3$p.value,out4$p.value,out5$p.value)
+            }
+
         }
 
-    }
-    else{
+    } else{
         out3=lm(x~y)
         if(sum(result)<=5000) out4=shapiro.test(resid(out3))
         else out4=nortest::ad.test(resid(out3))
@@ -47,29 +59,96 @@ my.t.test=function(y,x){
 #' These are not to be called by the user
 #' @param x a vector
 #' @param y a vector
-#' @param mydata a data.frame
-#' @importFrom stats chisq.test fisher.test xtabs
-my.chisq.test=function(x,y,mydata)
+#' @param mydata A data.frame
+#' @param catMethod An integer indicating methods for categorical variables.
+#'               Possible values in methods are
+#'               \describe{
+#'                  \item{0}{Perform chisq.test first. If warning present, perform fisher test}
+#'                  \item{1}{Perform chisq.test without continuity correction}
+#'                  \item{2}{Perform chisq.test with continuity correction}
+#'                  \item{3}{perform fisher.test}
+#'                  \item{4}{perform prop.trend test}
+#'               }
+#'               Default value is 2.
+#' @importFrom stats chisq.test fisher.test xtabs prop.trend.test
+#' @export
+my.chisq.test=function(x,y,mydata,catMethod=2)
 {
-
-    mytable=xtabs(~x+y,data=mydata)
-    if(dim(mytable)[2]==1){
+  # x="sex"
+  # y="Dx"
+  # mydata=acs[c(x,y)]
+  # str(mydata)
+  # colnames(mydata)=c("x","y")
+  #  catMethod=2
+    temp=table(mydata$y,mydata$x)
+    # temp
+    # str(x)
+    #  str(y)
+    #  str(mydata)
+    if((nrow(temp)>2)&(ncol(temp)==2)) temp=t(temp)
+    # temp=xtabs(~x+y)
+     temp
+    if(dim(temp)[2]==1){
         p=c(NA,NA,NA)
-    } else if(dim(mytable)[1]==1){
+        attr(p,"method")=""
+    } else if(dim(temp)[1]==1){
         p=c(NA,NA,NA)
+        attr(p,"method")=""
     } else{
+        p=c(NA,NA,NA)
         ow=options("warn")
         options(warn=-1)
-        out<-try(chisq.test(mytable))
-        if(class(out)!="htest") p=c(NA,NA,NA)
-        else if(sum(mytable)< 100 & dim(mytable)[1]>1){
-            out1=fisher.test(mytable)
-            p=c(out$p.value,out1$p.value,NA)
+        if(catMethod==0) {
+          result=cat.test(temp)
+        } else if(catMethod==1) {
+          result=chisq.test(temp,correct=FALSE)
+        } else if(catMethod==2) {
+          result=chisq.test(temp)
+        } else if(catMethod==3) {
+          result=cat.test(temp,mode=2)
+        } else if(catMethod==4) {
+            if(nrow(temp)>2) {
+                result=NA
+            } else {
+                result=prop.trend.test(temp[2,],colSums(temp))
+            }
         }
-        else p=c(out$p.value,NA,NA)
+
+        if(length(result)==1){
+            p[1]<-NA
+            attr(p,"method")=""
+        } else{
+           p[1]=result$p.value
+           attr(p,"method")=result$method
+        }
+        if(sum(temp)< 100 & dim(temp)[1]>1){
+            p[2]=fisher.test(temp)$p.value
+        }
+        if(nrow(temp)>2) {
+            p[3]=NA
+        } else {
+            p[3]=prop.trend.test(temp[2,],colSums(temp))$p.value
+        }
         options(ow)
     }
     p
+}
+
+#' Perform chisq.test or fisher test
+#' @param x a numeric vector or matrix. x and y can also both be factors.
+#' @param mode An integer. If 1(default), perform chisq.test first, If 2, perform fisher.test first
+#' @param ... Further arguments to be passed to chisq.test or fisher.test
+#' @export
+cat.test=function(x,mode=1,...){
+
+  result=tryCatch(chisq.test(x,...),warning=function(w) return("warning present"))
+  if((mode==1) & ("htest" %in% class(result))) return(result)
+
+  result2=tryCatch(fisher.test(x,...),
+                     warning=function(w) return("warning present"),
+                     error=function(e) return("error present"))
+  if("htest" %in% class(result2)) result=result2
+  result
 }
 
 #' Internal mytable functions
@@ -78,6 +157,7 @@ my.chisq.test=function(x,y,mydata)
 #' These are not to be called by the user
 #' @param x a numeric vector
 #' @importFrom stats sd median mad IQR fivenum
+#' @export
 num_summary <-function(x){
     if(all(is.na(x))){
        result=list(NA,NA,NA,NA,NA,list(NA,NA,NA,NA,NA))
@@ -89,20 +169,54 @@ num_summary <-function(x){
 
 }
 
+
+#' Produce table for descriptive statistics
+#'
+#' Produce table for descriptive statistics by groups for several variables easily.
+#' Depending on  the nature of these variables, different descriptive statistical
+#' methods were used(t-test, ANOVA,Kruskal-Wallis, chisq, Fisher,...)
+#' @param x An R object, formula or data.frame
+#' @param ... arguments to be passed to \code{\link{mytable_sub}}
+#' @export
+#' @examples
+#' mytable(acs)
+#' mytable(~age+sex,data=acs)
+#' mytable(Dx~age+sex+height+weight+TC+TG+HDLC,data=acs,method=3,digits=2)
+#' mytable(am+cyl~.,data=mtcars)
+#' out=mytable(sex~.,data=acs)
+#' out
+#' summary(out)
+#' require(ztable)
+#' ztable(out)
+mytable=function(x,...)  UseMethod("mytable")
+
+
+#'@describeIn mytable S3 method for formula
+#'@export
+mytable.formula=function(x,...) {
+    mytable_sub(x,...)
+}
+
+
 #' Produce table for descriptive statistics
 #'
 #' Produce table for descriptive statistics by groups for several variables easily.
 #' Depending on  the nature of these variables, different descriptive statistical
 #' methods were used(t-test, ANOVA,Kruskal-Wallis, chisq, Fisher,...)
 #'
-#' @param formula An object of class "formula". Left side of ~ must contain the
+#' @param x An object of class "formula". Left side of ~ must contain the
 #'                name of one grouping variable or two grouping variables in an
 #'                additive way(e.g. sex+group~), and the right side of ~ must have
 #'                variables in an additive way.
 #' @param data A data.frame contains data for analysis
+#' @param use.labels Logical. Whether or not use labels.
+#' @param use.column.label Logical. Whether or not use column labels.
 #' @param max.ylev An integer indicating the maximum number of levels of grouping
 #'                 variable ('y'). If a colummn have unique values less than max.ylev
 #'                 it is treated as a categorical variable. Default value is 5.
+#' @param maxCatLevel An integer indicating the maximum number of unique levels of categorial variable.
+#'                  If a colummn have unique values more than maxCatLevel, categorical summarization
+#'                  will not be performed.
 #' @param digits An integer indicating the number of decimal places (round) or
 #'               significant digits to be used. Default value is 1.
 #' @param method An integer indicating methods for continuous variables.
@@ -114,6 +228,16 @@ num_summary <-function(x){
 #'                          normal or non-normal}
 #'               }
 #'               Default value is 1.
+#' @param catMethod An integer indicating methods for categorical variables.
+#'               Possible values in methods are
+#'               \describe{
+#'                  \item{0}{Perform chisq.test first. If warning present, perform fisher test}
+#'                  \item{1}{Perform chisq.test without continuity correction}
+#'                  \item{2}{Perform chisq.test with continuity correction}
+#'                  \item{3}{perform fisher.test}
+#'                  \item{4}{perform prop.trend test}
+#'               }
+#'               Default value is 2.
 #' @param show.all A logical value indicating whether or not all statistical
 #'                 values have to be shown in table. Default value is FALSE.
 #' @param exact A logical value indicating whether or not permit call with approximate
@@ -126,29 +250,33 @@ num_summary <-function(x){
 #'
 #' @importFrom stats addmargins
 #' @export
-#' @examples
-#' data(acs)
-#' mytable(Dx~.,data=acs)
-#' mytable(Dx~age+sex+height+weight+TC+TG+HDLC,data=acs,method=3,digits=2)
-#' mytable(am+cyl~.,data=mtcars)
-#' out=mytable(sex~.,data=acs)
-#' out
-#' summary(out)
-#' mylatex(out)
-#'
-mytable=function(formula,data,max.ylev=5,digits=1,method=1,show.all=FALSE,exact=FALSE,show.total=FALSE){
-    call=paste(deparse(formula),", ","data= ",substitute(data),sep="")
-    # cat("\n Call:",call,"\n\n")
-    f=formula
-    myt=terms(f,data=data)
-    y=as.character(f[[2]])
-    res=unlist(strsplit(deparse(formula),"~",fixed=TRUE))
+mytable_sub=function(x,data,use.labels=TRUE,use.column.label=TRUE,
+                     max.ylev=5,maxCatLevel=20,digits=1,method=1,catMethod=2,
+                     show.all=FALSE,exact=FALSE,show.total=FALSE){
+    # x=Sex~.
+    # data=acs;use.labels=TRUE;use.column.label=TRUE
+    # max.ylev=5;maxCatLevel=20;digits=1;method=1;show.all=FALSE;exact=FALSE;show.total=FALSE
 
-    y=unlist(strsplit(y,"+",fixed=TRUE))
+    call=paste(deparse(x),", ","data= ",substitute(data),sep="")
+    # cat("\n Call:",call,"\n\n")
+    f=x
+    length(f)
+    myt=terms(f,data=data)
+
+    if(length(f)>2) {
+        y=as.character(f[[2]])
+    } else{
+        y=""
+    }
+    y
+    res=unlist(strsplit(deparse(x),"~",fixed=TRUE))
+    # if(y!="") y=unlist(strsplit(y,"+",fixed=TRUE))
     if(length(y)>1) {
-        result=mytable2(formula,data,max.ylev,digits,method,show.all,exact=exact,show.total=show.total)
+        result=mytable2(x,data,use.labels,use.column.label,
+                        max.ylev,maxCatLevel,digits,method=method,catMethod=catMethod,show.all,exact=exact,show.total=show.total)
         return(result)
     }
+    if(y!=""){
     if(exact){
         y1<-y
     } else{
@@ -160,30 +288,64 @@ mytable=function(formula,data,max.ylev=5,digits=1,method=1,show.all=FALSE,exact=
         if(!identical(y,y1)) {
             cat("\n","'",y,"' is an invalid column name: Instead '",y1,"' is used\n")
             s=paste(y1,res[2],sep="~")
-            result=mytable(as.formula(s),data,max.ylev,digits,method,show.all,exact=exact,show.total=show.total)
+
+            result=mytable(as.formula(s),data,use.labels,use.column.label,
+                           max.ylev,maxCatLevel,digits,method,show.all,exact=exact,show.total=show.total)
+
             return(result)
         }
+    }
+    # if(use.column.label){
+    #     data<-changeColnameLabel(data,f)
+    # }
+    if(use.labels){
+            data<-addLabelDf(data)
     }
     t=table(data[[y1]])
     if(show.total){
         t=addmargins(t)
         names(t)[length(t)]="Total"
     }
-    result=list(y=y1,length=length(t),names=names(t),count=unname(t),method=method,show.all=show.all)
+    labely1=y1
+    if(use.column.label){
+
+        label=attr(data[[y1]],"label",exact=TRUE)
+        if(!is.null(label)) labely1=label
+
+
+    }
+    result=list(y=labely1,length=length(t),names=names(t),count=unname(t),method=method,show.all=show.all)
+
     x=labels(myt)
     error=c()
+
+
+
     for(i in 1:length(x)) {
 
-        out<-mytable.sub(y1,x[i],data,max.ylev,show.total=show.total)
+        out<-mytable_sub2(y1,x[i],data,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total)
+
         if(length(out)!=4) {
             error=c(error,x[i])
             next
         }
-        result[[x[i]]]=out
+        label=getLabel(data,x[i],use.column.label)
+        result[[label]]=out
     }
+    #str(result)
     out=printmytable2(result,digits)
     class(out)=c("mytable")
     attr(out,"error")=error
+    out
+    } else{
+        dataname=as.character(substitute(data))
+        # str(dataname)
+        assign(dataname,data[attr(myt,"term.labels")])
+        out=eval(parse(text=paste0("mytable_df(",dataname,
+                                   ",max.ylev=",max.ylev,",digits=",digits,",method=",method,
+                                   ",show.all=",show.all,")")))
+        out
+    }
     out
 }
 
@@ -208,6 +370,7 @@ validColname=function(pattern,x) {
     x[result]
 }
 
+
 #' Internal mytable functions
 #'
 #' Internal mytable functions
@@ -216,13 +379,18 @@ validColname=function(pattern,x) {
 #' @param x a vector
 #' @param data a data.frame
 #' @param max.ylev an integer
+#' @param maxCatLevel an integer
 #' @param method an integer
+#' @param catMethod an integer
 #' @param show.total a logical value
 #' @importFrom stats na.omit
 #' @export
-mytable.sub=function(y,x,data,max.ylev=5,method=1,show.total=FALSE){
+mytable_sub2=function(y,x,data,max.ylev=5,maxCatLevel=20,method=1,catMethod=2,show.total=FALSE){
     #mydata=na.omit(data.frame(y=data[[y]],x=data[[x]]))
-
+    # data=iris2
+    # y="Species"
+    # x="Sepal.Length"
+    # use.column.label=TRUE;max.ylev=5;maxCatLevel=20;method=1;show.total=FALSE
     mydata=try(data.frame(y=data[[y]],x=data[[x]]))
 
     if(class(mydata)!="data.frame") return(-1)
@@ -232,15 +400,17 @@ mytable.sub=function(y,x,data,max.ylev=5,method=1,show.total=FALSE){
     N=sum(result)
     var_name=x
     xlev=dim(result)[1]
+      # xlev
     var_class=ifelse(is.numeric(mydata$x),"continuous","categorical")
     if(xlev<=max.ylev) {
         factorx=factor(mydata$x)
         var_class="categorical"
     }
-    #cat("name=",var_name,",class=",var_class,"N=",N,"\n")
+     # cat("name=",var_name,",class=",var_class,"N=",N,"\n")
     if(var_class=="categorical") {   # categorical
         subgroup=list()
         ## for descriptives
+        if(xlev<=maxCatLevel){
         for(i in 1:xlev){
             if(show.total){
 
@@ -275,11 +445,21 @@ mytable.sub=function(y,x,data,max.ylev=5,method=1,show.total=FALSE){
         #}
         names(subgroup)=rownames(result)
         ## for statistical
-        p=my.chisq.test(x,y,mydata)
+        p=my.chisq.test(x,y,mydata,catMethod=catMethod)
+        } else{
+            var_class="categorical2"
+            if("Date" %in% class(mydata$x)){
+                subgroup=paste0(min(mydata$x),"-",max(mydata$x))
+            } else{
+               subgroup=paste0("unique values:",xlev)
+            }
+            p=NA
+        }
         result=list(class=var_class,count=N,subgroup=subgroup,p=p)
+        #str(result)
+        result
         #browser()
-    }
-    else {
+    } else {
          ## for descriptive
          out=tapply(data[[x]],data[[y]],num_summary)
 
@@ -307,6 +487,7 @@ mytable.sub=function(y,x,data,max.ylev=5,method=1,show.total=FALSE){
         result=list(class=var_class,count=N,out=out,p=p)
 
     }
+    # str(result)
     result
 }
 
@@ -318,6 +499,8 @@ mytable.sub=function(y,x,data,max.ylev=5,method=1,show.total=FALSE){
 #' @param digits an integer
 #' @export
 printmytable2=function(obj,digits=1){
+    # obj<-result;digits=1
+    # str(obj)
     plusminus="\u00b1"
     cl=c()
     N=c()
@@ -330,6 +513,8 @@ printmytable2=function(obj,digits=1){
     colnames(desc)=obj$names
 
     fmt=sprintf("%s%df","%4.",digits)
+    fmt
+    #str(obj)
     for(i in 7:length(obj)){
         varnames=c(varnames,names(obj)[i])
         subnames=c(subnames,"")
@@ -350,8 +535,13 @@ printmytable2=function(obj,digits=1){
                 if(obj$method==1) temp=temp1
                 else if(obj$method==2) temp=temp2
                 else if(obj$method==3) {
-                    if(obj[[i]]$p[1]<=0.05) temp=temp2
-                    else temp=temp1
+                    if(is.na(obj[[i]]$p[1])){
+                        temp=temp2
+                    } else if(obj[[i]]$p[1]<=0.05) {
+                        temp=temp2
+                    } else {
+                        temp=temp1
+                    }
                 }
                 add[1,j]=temp
 
@@ -370,18 +560,20 @@ printmytable2=function(obj,digits=1){
                 ptest=c(ptest,"non-normal")
             }
             else if(obj$method==3) {
-                if(obj[[i]]$p[1]<=0.05) {
+                if(is.na(obj[[i]]$p[1])) {
                     p4=c(p4,obj[[i]]$p[3])
                     ptest=c(ptest,"non-normal")
-                }
-                else{
+                } else if(obj[[i]]$p[1]<=0.05) {
+                    p4=c(p4,obj[[i]]$p[3])
+                    ptest=c(ptest,"non-normal")
+                } else{
                     p4=c(p4,obj[[i]]$p[2])
                     ptest=c(ptest,"normal")
                 }
             }
         }
         # if factor
-        else {          ##if(obj[[i]]$class=="categorical")
+        else if(obj[[i]]$class=="categorical"){          ##if(obj[[i]]$class=="categorical")
             add=matrix(,ncol=obj$length)
             for(j in 1:obj$length){
                    add[1,j]=""
@@ -394,7 +586,7 @@ printmytable2=function(obj,digits=1){
             p3=c(p3,length(obj[[i]]$subgroup))
             #p3=c(p3,NA)
             p4=c(p4,obj[[i]]$p[1])
-            ptest=c(ptest,"chisq.test")
+            ptest=c(ptest,attr(obj[[i]]$p,"method"))
             for(k in 1:length(obj[[i]]$subgroup)){
                 temp=names(obj[[i]]$subgroup)[k]
                 varnames=c(varnames,"")
@@ -418,6 +610,18 @@ printmytable2=function(obj,digits=1){
                 else desc=rbind(desc,add)
             }
         }
+        else{   ##if(obj[[i]]$class=="categorical2")
+            for(j in 1:obj$length){
+                add[1,j]=obj[[i]]$subgroup
+            }
+            if(all(is.na(desc))) desc=add
+            else desc=rbind(desc,add)
+            p1=c(p1,NA)
+            p2=c(p2,NA)
+            p3=c(p3,NA)
+            p4=c(p4,NA)
+            ptest=c(ptest,"")
+        }
     }
     nname=ifelse(subnames=="",varnames,paste(varnames,"  - ",subnames,sep=""))
     nname=formatC(nname,"%s",flag="-")
@@ -432,10 +636,12 @@ printmytable2=function(obj,digits=1){
     sp3=sapply(p3,function(x) ifelse(is.na(x),"",sprintf("%.3f",x)))
     sp4=sapply(p4,function(x) ifelse(is.na(x),"",sprintf("%.3f",x)))
     sig=sapply(p4,p2sig)
+    # str(res)
+    # str(ptest)
     res=data.frame(res,p=sp4,sig,p1=sp1,p2=sp2,p3=sp3,class=unlist(cl),ptest=ptest,N=unlist(N))
     #rownames(res)=names(obj)[4:length(obj)]
     colnames(res)[2:(2+length(obj$names)-1)]=obj$names
-    colnames(res)[1]=obj$y
+    if(length(obj$y)==1) colnames(res)[1]=obj$y
     result=list(res=res,count=obj$count,method=obj$method,show.all=obj$show.all)
     result
 }
@@ -461,6 +667,7 @@ p2sig=function(value){
 #' @param x a character vector
 #' @param ...  further arguments passed to or from other methods.
 #' @param width an integer
+#' @export
 centerprint=function(x,...,width=10){
 
         mwidth=max(nchar(x),width)
@@ -490,6 +697,7 @@ space=function(num){
 #' These are not to be called by the user
 #' @param x a character vector
 #' @param times an integer
+#' @export
 reprint=function(x,times){
     ret=x
     if(times<=1) return(x)
@@ -733,9 +941,14 @@ summary.cbind.mytable=function(object,...) {
 #'                additive way(e.g. sex+group~), and the right side of ~ must have
 #'                variables in an additive way.
 #' @param data A data.frame contains data for analysis
+#' @param use.labels Logical. Whether or not use labels.
+#' @param use.column.label Logical. Whether or not use column labels.
 #' @param max.ylev An integer indicating the maximum number of levels of grouping
 #'                 variable ('y'). If a colummn have unique values less than max.ylev
 #'                 it is treated as a categorical variable. Default value is 5.
+#' @param maxCatLevel An integer indicating the maximum number of unique levels of categorial variable.
+#'                  If a colummn have unique values more than maxCatLevel, categorical summarization
+#'                  will not be performed.
 #' @param digits An integer indicating the number of decimal places (round) or
 #'               significant digits to be used. Default value is 1.
 #' @param method An integer indicating methods for continuous variables.
@@ -747,6 +960,16 @@ summary.cbind.mytable=function(object,...) {
 #'                          normal or non-normal}
 #'               }
 #'               Default value is 1.
+#' @param catMethod An integer indicating methods for categorical variables.
+#'               Possible values in methods are
+#'               \describe{
+#'                  \item{0}{Perform chisq.test first. If warning present, perform fisher test}
+#'                  \item{1}{Perform chisq.test without continuity correction}
+#'                  \item{2}{Perform chisq.test with continuity correction}
+#'                  \item{3}{perform fisher.test}
+#'                  \item{4}{perform prop.trend test}
+#'               }
+#'               Default value is 2.
 #' @param show.all A logical value indicating whether or not all statistical
 #'                 values have to be shown in table. Default value is FALSE.
 #' @param exact A logical value indicating whether or not permit call with approximate
@@ -755,7 +978,8 @@ summary.cbind.mytable=function(object,...) {
 #'                 Default value is FALSE.
 #' @export
 #' @return An object of class "cbind.mytable"
-mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE,exact=FALSE,show.total=FALSE){
+mytable2=function(formula,data,use.labels=TRUE,use.column.label=TRUE,
+                  max.ylev=5,maxCatLevel=20,digits=2,method=1,catMethod=2,show.all=FALSE,exact=FALSE,show.total=FALSE){
     call=paste(deparse(formula),", ","data= ",substitute(data),sep="")
     # cat("\n Call:",call,"\n\n")
     f=formula
@@ -798,9 +1022,17 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE,exact
         if(recall==1) {
             s=paste(validy1,validy2,sep="+")
             s=paste(s,res[2],sep="~")
-            result=mytable2(as.formula(s),data,max.ylev,digits,method,show.all,exact,show.total)
+            result=mytable2(as.formula(s),data,use.labels,use.column.label,
+                            max.ylev,maxCatLevel,digits,method=method,catMethod=catMethod,show.all,exact,show.total)
             return(result)
         }
+    }
+
+    # if(use.column.label){
+    #     data<-changeColnameLabel(data)
+    # }
+    if(use.labels){
+        data<-addLabelDf(data)
     }
     uniquey=unique(data[[validy1]])
     ycount=length(uniquey)
@@ -818,8 +1050,10 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE,exact
                         method=method,show.all=show.all)
             x=labels(myt)
             for(i in 1:length(x)) {
-                out=mytable.sub(y1,x[i],data,max.ylev,show.total=show.total)
-                result[[x[i]]]=out
+                out=mytable_sub2(y1,x[i],data,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total)
+                label=getLabel(data,x[i],use.column.label)
+                result[[label]]=out
+
             }
             out=printmytable2(result,digits)
             class(out)=c("mytable")
@@ -842,8 +1076,11 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE,exact
                 data[[x[j]]]=factor(data[[x[j]]])
                 mydata=data[data[[validy1]]==uniquey[i],]
             }
-            out=mytable.sub(validy2,x[j],mydata,max.ylev,show.total=show.total)
-            result[[x[j]]]=out
+            out=mytable_sub2(validy2,x[j],mydata,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total)
+
+            label=getLabel(data,x[j],use.column.label)
+            result[[label]]=out
+
             #cat("y[2]=",y[2],",x[j]=",x[j],"\n")
         }
         out=printmytable2(result,digits)
@@ -851,6 +1088,10 @@ mytable2=function(formula,data,max.ylev=5,digits=2,method=1,show.all=FALSE,exact
         out1[[i]]=out
 
     }
+    if(use.column.label) {
+
+    }
+    y=getLabel(data,y,use.column.label)
     if(ycount==2) final=cbind(out1[[1]],out1[[2]],caption=uniquey,y=y)
     else if(ycount==3) final=cbind(out1[[1]],out1[[2]],out1[[3]],caption=uniquey,y=y)
     else if(ycount==4) final=cbind(out1[[1]],out1[[2]],out1[[3]],out1[[4]],caption=uniquey,y=y)

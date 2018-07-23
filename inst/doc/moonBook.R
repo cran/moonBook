@@ -7,6 +7,32 @@ mytable(Dx~.,data=acs)
 str(acs)
 
 ## ----comment=NA----------------------------------------------------------
+mytable(acs)
+
+## ----comment=NA----------------------------------------------------------
+mytable(~age+sex,data=acs)
+
+## ----comment=NA----------------------------------------------------------
+if(!require(sjlabelled)) {
+    install.packages("sjlabelled")
+    require(sjlabelled)
+}
+df=mtcars
+df$am<-set_label(df$am,label="Transmission")
+df$am<-set_labels(df$am,labels=c("automatic","manual"))
+df$vs<-set_label(df$vs,label="Engine")
+df$vs<-set_labels(df$vs,labels=c("V-shaped","straight"))
+
+## ----comment=NA----------------------------------------------------------
+str(df)
+
+## ----comment=NA----------------------------------------------------------
+mytable(df)
+mytable(df,use.labels=FALSE, use.column.label=FALSE)
+mytable(am~.,data=df)
+# mytable(vs+am~.,data=df)
+
+## ----comment=NA----------------------------------------------------------
 mytable(sex~age+Dx,data=acs)
 
 ## ---- comment=NA---------------------------------------------------------
@@ -42,6 +68,14 @@ myhtml(out1)
 ## ----eval=FALSE----------------------------------------------------------
 #  mycsv(out,file="test.csv")
 #  mycsv(out1,fil="test1.csv")
+
+## ----messgae=FALSE,results='asis'----------------------------------------
+require(ztable)
+require(magrittr)
+mytable(sex+DM~.,data=acs) %>%
+    ztable %>%
+    addSigColor %>%
+    print(type="html")
 
 ## ----fig.height=5,fig.width=6--------------------------------------------
 library(moonBook)
