@@ -1,6 +1,6 @@
 Package: moonBook
 Title: Functions and Datasets for the Book by Keon-Woong Moon
-Version: 0.2.3
+Version: 0.2.4
 Authors@R: person("Keon-Woong","Moon", email="cardiomoon@gmail.com",
     role=c("aut", "cre"))
 URL: https://github.com/cardiomoon/moonBook
@@ -12,13 +12,14 @@ Description: Several analysis-related functions for the book entitled "R
 Depends: R (>= 3.1.2)
 License: GPL-2
 LazyData: true
-Imports: nortest, survival, sjmisc, purrr, stringr, magrittr
-Suggests: testthat, knitr, ggplot2, ztable, sjlabelled, rmarkdown
+Encoding: UTF-8
+Imports: nortest, survival, sjmisc, stringr, magrittr, ztable
+Suggests: testthat, knitr, ggplot2, sjlabelled, rmarkdown
 VignetteBuilder: knitr
-RoxygenNote: 6.0.1
+RoxygenNote: 7.1.1
 NeedsCompilation: no
-Packaged: 2018-07-23 05:14:50 UTC; cardiomoon
+Packaged: 2021-01-08 00:10:35 UTC; cardiomoon
 Author: Keon-Woong Moon [aut, cre]
 Maintainer: Keon-Woong Moon <cardiomoon@gmail.com>
 Repository: CRAN
-Date/Publication: 2018-07-23 05:40:02 UTC
+Date/Publication: 2021-01-08 10:30:02 UTC
