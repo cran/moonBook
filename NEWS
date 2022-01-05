@@ -1,3 +1,50 @@
+moonBook 0.3.1
+==============
+(2021-Dec-29)
+
+* bugs fix in function extractOR and extractHR
+
+
+moonBook 0.3.0
+==============
+(2021-Dec-26)
+
+* bugs fix in function extractOR and extractHR
+
+moonBook 0.2.9
+==============
+(2021-Dec-20)
+
+* new argument 'missing' in mytable function for missing data analysis
+* mytable() print red character in R console when p < 0.05
+
+
+moonBook 0.2.8
+==============
+(2021-Sep-4)
+
+* Bug fixed :
+
+
+moonBook 0.2.7
+==============
+(2021-July-7)
+
+* Bug fixed :
+
+
+moonBook 0.2.6
+==============
+(2021-Apr-27)
+
+* Bug fixed :
+
+moonBook 0.2.5
+==============
+(2021-Jan-5)
+
+* Bug fixed :
+
 moonBook 0.2.4
 ==============
 (2021-Jan-5)

@@ -16,7 +16,8 @@ mytable2(
   catMethod = 2,
   show.all = FALSE,
   exact = FALSE,
-  show.total = FALSE
+  show.total = FALSE,
+  origData = NULL
 )
 }
 \arguments{
@@ -31,11 +32,11 @@ variables in an additive way.}
 \item{use.column.label}{Logical. Whether or not use column labels.}
 
 \item{max.ylev}{An integer indicating the maximum number of levels of grouping
-variable ('y'). If a colummn have unique values less than max.ylev
+variable ('y'). If a column have unique values less than max.ylev
 it is treated as a categorical variable. Default value is 5.}
 
-\item{maxCatLevel}{An integer indicating the maximum number of unique levels of categorial variable.
-If a colummn have unique values more than maxCatLevel, categorical summarization
+\item{maxCatLevel}{An integer indicating the maximum number of unique levels of categorical variable.
+If a column have unique values more than maxCatLevel, categorical summarization
 will not be performed.}
 
 \item{digits}{An integer indicating the number of decimal places (round) or
@@ -70,6 +71,8 @@ parameter. If true, only exact column name permitted.Default value is FALSE.}
 
 \item{show.total}{A logical value indicating whether or not show total group value.
 Default value is FALSE.}
+
+\item{origData}{A data.frame contains data for analysis}
 }
 \value{
 An object of class "cbind.mytable"

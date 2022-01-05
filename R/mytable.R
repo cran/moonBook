@@ -19,7 +19,12 @@ my.t.test=function(y,x){
         #browser()
         out=lm(x~y)
         if(sum(result)<=5000) {
-            out3=shapiro.test(resid(out))
+            if(length(unique(resid(out)))==1){
+               out3=1
+            } else{
+               out3=shapiro.test(resid(out))
+            }
+
         } else {
             out3=nortest::ad.test(resid(out))
         }
@@ -44,7 +49,7 @@ my.t.test=function(y,x){
         }
 
     } else{
-        out3=lm(x~y)
+        out3=lm(x~factor(y))
         if(sum(result)<=5000) out4=shapiro.test(resid(out3))
         else out4=nortest::ad.test(resid(out3))
         out5=kruskal.test(as.numeric(x),factor(y))
@@ -91,9 +96,9 @@ my.chisq.test=function(x,y,mydata,catMethod=2)
     if(dim(temp)[2]==1){
         p=c(NA,NA,NA)
         attr(p,"method")=""
-    } else if(dim(temp)[1]==1){
-        p=c(NA,NA,NA)
-        attr(p,"method")=""
+    # } else if(dim(temp)[1]==1){
+    #     p=c(NA,NA,NA)
+    #     attr(p,"method")=""
     } else{
         p=c(NA,NA,NA)
         ow=options("warn")
@@ -124,13 +129,14 @@ my.chisq.test=function(x,y,mydata,catMethod=2)
         if(sum(temp)< 100 & dim(temp)[1]>1){
             p[2]=fisher.test(temp)$p.value
         }
-        if(nrow(temp)>2) {
+        if(nrow(temp)!=2) {
             p[3]=NA
         } else {
             p[3]=prop.trend.test(temp[2,],colSums(temp))$p.value
         }
         options(ow)
     }
+     if(is.nan(p[1])) p[1]=1
     p
 }
 
@@ -214,10 +220,10 @@ mytable.formula=function(x,...) {
 #' @param use.labels Logical. Whether or not use labels.
 #' @param use.column.label Logical. Whether or not use column labels.
 #' @param max.ylev An integer indicating the maximum number of levels of grouping
-#'                 variable ('y'). If a colummn have unique values less than max.ylev
+#'                 variable ('y'). If a column have unique values less than max.ylev
 #'                 it is treated as a categorical variable. Default value is 5.
-#' @param maxCatLevel An integer indicating the maximum number of unique levels of categorial variable.
-#'                  If a colummn have unique values more than maxCatLevel, categorical summarization
+#' @param maxCatLevel An integer indicating the maximum number of unique levels of categorical variable.
+#'                  If a column have unique values more than maxCatLevel, categorical summarization
 #'                  will not be performed.
 #' @param digits An integer indicating the number of decimal places (round) or
 #'               significant digits to be used. Default value is 1.
@@ -246,6 +252,8 @@ mytable.formula=function(x,...) {
 #'             parameter. If true, only exact column name permitted.Default value is FALSE.
 #' @param show.total A logical value indicating whether or not show total group value.
 #'                 Default value is FALSE.
+#' @param missing A logical value indicating whether or not perform missing data analysis.
+#'                 Default value is FALSE.
 #' @return An object of class "mytable".
 #'      'print' returns a table for descriptive statistics.
 #'      'summary' returns a table with all statistical values.
@@ -254,7 +262,7 @@ mytable.formula=function(x,...) {
 #' @export
 mytable_sub=function(x,data,use.labels=TRUE,use.column.label=TRUE,
                      max.ylev=5,maxCatLevel=20,digits=1,method=1,catMethod=2,
-                     show.all=FALSE,exact=FALSE,show.total=FALSE){
+                     show.all=FALSE,exact=FALSE,show.total=FALSE,missing=FALSE){
     # x=Sex~.
     # data=acs;use.labels=TRUE;use.column.label=TRUE
     # max.ylev=5;maxCatLevel=20;digits=1;method=1;show.all=FALSE;exact=FALSE;show.total=FALSE
@@ -294,6 +302,26 @@ mytable_sub=function(x,data,use.labels=TRUE,use.column.label=TRUE,
             result=mytable(as.formula(s),data,use.labels,use.column.label,
                            max.ylev,maxCatLevel,digits,method,show.all,exact=exact,show.total=show.total)
 
+            attr(result,"missing")=TRUE
+            return(result)
+        }
+    }
+    if(missing==TRUE){
+        if(sum(is.na(data[[y]]))>0){
+        data[[paste0(y,"Missing")]]=ifelse(is.na(data[[y]]),"Missing","Not missing")
+        data[[paste0(y,"Missing")]]=factor(data[[paste0(y,"Missing")]],levels=c("Not missing","Missing"))
+        s=paste0(paste0(y,"Missing"),"~",res[2])
+        data[[y]]<-NULL
+
+        result=mytable(as.formula(s),data,use.labels,use.column.label,
+                       max.ylev,maxCatLevel,digits,method,show.all,exact=exact,show.total=show.total)
+        attr(result,"missing")=TRUE
+        return(result)
+        } else{
+            cat(paste0("There is no missing data in column '",y,"'\n"))
+            s=paste0("~",res[2])
+            result=mytable(as.formula(s),data,use.labels,use.column.label,
+                           max.ylev,maxCatLevel,digits,method,show.all,exact=exact,show.total=show.total)
             return(result)
         }
     }
@@ -325,7 +353,7 @@ mytable_sub=function(x,data,use.labels=TRUE,use.column.label=TRUE,
 
     for(i in 1:length(x)) {
 
-        out<-mytable_sub2(y1,x[i],data,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total)
+        out<-mytable_sub2(y1,x[i],data,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total,origData=data)
 
         if(length(out)!=4) {
             error=c(error,x[i])
@@ -385,14 +413,15 @@ validColname=function(pattern,x) {
 #' @param method an integer
 #' @param catMethod an integer
 #' @param show.total a logical value
+#' @param origData a data.frame
 #' @importFrom stats na.omit
 #' @export
-mytable_sub2=function(y,x,data,max.ylev=5,maxCatLevel=20,method=1,catMethod=2,show.total=FALSE){
+mytable_sub2=function(y,x,data,max.ylev=5,maxCatLevel=20,method=1,catMethod=2,show.total=FALSE,origData){
     #mydata=na.omit(data.frame(y=data[[y]],x=data[[x]]))
     # data=iris2
     # y="Species"
     # x="Sepal.Length"
-    # use.column.label=TRUE;max.ylev=5;maxCatLevel=20;method=1;show.total=FALSE
+     # use.column.label=TRUE;max.ylev=5;maxCatLevel=20;method=1;show.total=FALSE
     mydata=try(data.frame(y=data[[y]],x=data[[x]]))
 
     if(class(mydata)!="data.frame") return(-1)
@@ -401,8 +430,12 @@ mytable_sub2=function(y,x,data,max.ylev=5,maxCatLevel=20,method=1,catMethod=2,sh
     result1=addmargins(result,2)
     N=sum(result)
     var_name=x
-    xlev=dim(result)[1]
-      # xlev
+    # xlev=dim(result)[1]
+    xlev=length(setdiff(unique(origData[[x]]),NA))
+    # cat("xlev=",xlev,"\n")
+    # str(data)
+    # str(origData)
+
     var_class=ifelse(is.numeric(mydata$x),"continuous","categorical")
     if(xlev<=max.ylev) {
         factorx=factor(mydata$x)
@@ -454,6 +487,9 @@ mytable_sub2=function(y,x,data,max.ylev=5,maxCatLevel=20,method=1,catMethod=2,sh
                 subgroup=paste0(min(mydata$x),"-",max(mydata$x))
             } else{
                subgroup=paste0("unique values:",xlev)
+            #    cat("xlev=",xlev,"\n")
+            #    str(data)
+            #    str(origData)
             }
             p=NA
         }
@@ -735,7 +771,7 @@ obj2linecount=function(myobj){
 #'
 #' @param x An object of class "mytable", a result of a call to \code{\link{mytable}}
 #' @param ... further arguments passed to or from other methods.
-#'
+#' @importFrom crayon red
 #' @export
 print.mytable=function(x,...) {
 
@@ -749,11 +785,16 @@ print.mytable=function(x,...) {
     linelength=result$linelength
 
     cat("\n")
+    if(!is.null(attr(x,"missing"))){
+        cat(centerprint(paste0("Missing data analysis: '",sub("Missing","",y),"'"),
+                        width=linelength))
+    } else{
     cat(centerprint(paste("Descriptive Statistics by '",y,"'",sep=""),
                     width=linelength))
+    }
     cat("\n")
-    hline=reprint("_",linelength)  #head line
-    tline=reprint("-",linelength)  # tail line
+    hline=reprint("\u2014",linelength)  #head line
+    tline=reprint("\u2014",linelength)  # tail line
     cat(hline,"\n")
     for(j in 1:(length(cn))) {
         cat(centerprint(cn[j],width=col.length[j]+1))
@@ -764,9 +805,18 @@ print.mytable=function(x,...) {
     }
     cat("\n")
     cat(tline,"\n")
+
+
     for(i in 1:dim(out1)[1]){
         for(j in 1:(length(cn))) {
+            if(is.na(as.numeric(out1[i,"p"]))){
+                cat(sapply(out1[i,j],centerprint,width=col.length[j]+1))
+            } else if(as.numeric(out1[i,"p"])<0.05){
+                cat(red(sapply(out1[i,j],centerprint,width=col.length[j]+1)))
+            } else{
             cat(sapply(out1[i,j],centerprint,width=col.length[j]+1))
+            }
+
         }
         cat("\n")
     }
@@ -849,8 +899,8 @@ print.cbind.mytable=function(x,...) {
     #for(i in 2:tcount) temp=paste(temp," and '",group[i],"'",sep="")
     cat(centerprint(temp,width=linelength))
     cat("\n")
-    hline=reprint("_",linelength)  #head line
-    tline=reprint("-",linelength)  # tail line
+    hline=reprint("\u2014",linelength)  #head line
+    tline=reprint("\u2014",linelength)  # tail line
     cat(hline,"\n")
     cat(centerprint("",width=result[[1]]$col.length[1]+2))
     for(i in 1:tcount){
@@ -861,7 +911,7 @@ print.cbind.mytable=function(x,...) {
     }
     cat("\n")
     cat(centerprint("",width=result[[1]]$col.length[1]+2))
-    for(i in 1:tcount) cat(reprint("-",result[[i]]$linelength-result[[i]]$col.length[1]-2),"")
+    for(i in 1:tcount) cat(reprint("\u2014",result[[i]]$linelength-result[[i]]$col.length[1]-2),"")
     cat("\n")
     cat(centerprint(result[[1]]$cn[1],width=result[[1]]$col.length[1]+1))
     for(i in 1:tcount) {
@@ -885,14 +935,28 @@ print.cbind.mytable=function(x,...) {
     for(i in 1:dim(result[[1]]$out1)[1]){
         for(k in 1:tcount){
             if(k==1) {
-                for(j in 1:(length(result[[1]]$cn)))
+                for(j in 1:(length(result[[1]]$cn))){
+                    temp=as.numeric(result[[k]]$out1[i,"p"])
+                    if(!is.na(temp) &(temp<0.05)){
+                        cat(red(sapply(result[[k]]$out1[i,j],centerprint,
+                                   width=result[[k]]$col.length[j]+1)))
+                    } else {
                     cat(sapply(result[[k]]$out1[i,j],centerprint,
                                width=result[[k]]$col.length[j]+1))
+                    }
+                }
             }
             else {
-                for(j in 2:(length(result[[1]]$cn)))
+                for(j in 2:(length(result[[1]]$cn))){
+                    temp=as.numeric(result[[k]]$out1[i,"p"])
+                    if(!is.na(temp) &(temp<0.05)){
+                       cat(red(sapply(result[[k]]$out1[i,j],centerprint,
+                                   width=result[[k]]$col.length[j]+1)))
+                    } else{
                     cat(sapply(result[[k]]$out1[i,j],centerprint,
                                width=result[[k]]$col.length[j]+1))
+                    }
+                }
             }
         }
         cat("\n")
@@ -946,10 +1010,10 @@ summary.cbind.mytable=function(object,...) {
 #' @param use.labels Logical. Whether or not use labels.
 #' @param use.column.label Logical. Whether or not use column labels.
 #' @param max.ylev An integer indicating the maximum number of levels of grouping
-#'                 variable ('y'). If a colummn have unique values less than max.ylev
+#'                 variable ('y'). If a column have unique values less than max.ylev
 #'                 it is treated as a categorical variable. Default value is 5.
-#' @param maxCatLevel An integer indicating the maximum number of unique levels of categorial variable.
-#'                  If a colummn have unique values more than maxCatLevel, categorical summarization
+#' @param maxCatLevel An integer indicating the maximum number of unique levels of categorical variable.
+#'                  If a column have unique values more than maxCatLevel, categorical summarization
 #'                  will not be performed.
 #' @param digits An integer indicating the number of decimal places (round) or
 #'               significant digits to be used. Default value is 1.
@@ -978,10 +1042,14 @@ summary.cbind.mytable=function(object,...) {
 #'             parameter. If true, only exact column name permitted.Default value is FALSE.
 #' @param show.total A logical value indicating whether or not show total group value.
 #'                 Default value is FALSE.
+#' @param origData A data.frame contains data for analysis
 #' @export
 #' @return An object of class "cbind.mytable"
 mytable2=function(formula,data,use.labels=TRUE,use.column.label=TRUE,
-                  max.ylev=5,maxCatLevel=20,digits=2,method=1,catMethod=2,show.all=FALSE,exact=FALSE,show.total=FALSE){
+                  max.ylev=5,maxCatLevel=20,digits=2,method=1,catMethod=2,
+                  show.all=FALSE,exact=FALSE,show.total=FALSE,origData=NULL){
+
+    if(is.null(origData)) origData=data
     call=paste(deparse(formula),", ","data= ",substitute(data),sep="")
     # cat("\n Call:",call,"\n\n")
     f=formula
@@ -1025,7 +1093,7 @@ mytable2=function(formula,data,use.labels=TRUE,use.column.label=TRUE,
             s=paste(validy1,validy2,sep="+")
             s=paste(s,res[2],sep="~")
             result=mytable2(as.formula(s),data,use.labels,use.column.label,
-                            max.ylev,maxCatLevel,digits,method=method,catMethod=catMethod,show.all,exact,show.total)
+                            max.ylev,maxCatLevel,digits,method=method,catMethod=catMethod,show.all,exact,show.total,origData=origData)
             return(result)
         }
     }
@@ -1052,7 +1120,7 @@ mytable2=function(formula,data,use.labels=TRUE,use.column.label=TRUE,
                         method=method,show.all=show.all)
             x=labels(myt)
             for(i in 1:length(x)) {
-                out=mytable_sub2(y1,x[i],data,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total)
+                out=mytable_sub2(y1,x[i],data,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total,origData=origData)
                 label=getLabel(data,x[i],use.column.label)
                 result[[label]]=out
 
@@ -1073,12 +1141,12 @@ mytable2=function(formula,data,use.labels=TRUE,use.column.label=TRUE,
         x=labels(myt)
 
         for(j in 1:length(x)) {
-            if((length(unique(mydata[[x[j]]]))<=max.ylev) & (!is.factor(mydata[[x[j]]]))){
+            if((length(unique(origData[[x[j]]]))<=max.ylev) & (!is.factor(mydata[[x[j]]]))){
                 #cat("x[j]=",x[j],"\n")
                 data[[x[j]]]=factor(data[[x[j]]])
                 mydata=data[data[[validy1]]==uniquey[i],]
             }
-            out=mytable_sub2(validy2,x[j],mydata,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total)
+            out=mytable_sub2(validy2,x[j],mydata,max.ylev,maxCatLevel,method=method,catMethod=catMethod,show.total=show.total,origData=origData)
 
             label=getLabel(data,x[j],use.column.label)
             result[[label]]=out
